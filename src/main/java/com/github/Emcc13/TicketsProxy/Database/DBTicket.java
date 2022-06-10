@@ -7,6 +7,8 @@ import net.md_5.bungee.api.chat.*;
 import net.md_5.bungee.api.chat.hover.content.Content;
 import net.md_5.bungee.api.chat.hover.content.Text;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -24,7 +26,17 @@ public class DBTicket {
         CLAIMER("%CLAIMER%"),
         REQUEST("%REQUEST%"),
         ANSWER("%ANSWER%"),
-        TICKETTYPE("%TICKETTYPE%");
+        TICKETTYPE("%TICKETTYPE%"),
+
+        DATE_YYYY("YYYY%"),
+        DATE_YY("YY%"),
+        DATE_MM("MM%"),
+        DATE_DD("DD%"),
+        DATE_hh("hh%"),
+        DATE_mm("mm%"),
+        DATE_ss("ss%"),
+        ;
+
         private final String name;
 
         private PH(String name) {
@@ -201,13 +213,13 @@ public class DBTicket {
             List<Tuple<Integer, Integer>> indeces = extractUrls(tcText);
             TextComponent copy;
             int last_index = 0;
-            for (Tuple<Integer, Integer> index:indeces){
+            for (Tuple<Integer, Integer> index : indeces) {
                 String url = tcText.substring(index.first, index.second);
                 copy = buildComponent(tc, tcText.substring(last_index, index.first), ticketTypes);
                 result.addExtra(copy);
                 copy = new TextComponent(url);
-                if (!(url.startsWith("https") || url.startsWith("http"))){
-                    url = "https://"+url;
+                if (!(url.startsWith("https") || url.startsWith("http"))) {
+                    url = "https://" + url;
                 }
                 copy.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url));
                 copy.setUnderlined(true);
@@ -220,7 +232,7 @@ public class DBTicket {
         return result;
     }
 
-    private TextComponent buildComponent(TextComponent original, String text, Map<String, String> ticketTypes){
+    private TextComponent buildComponent(TextComponent original, String text, Map<String, String> ticketTypes) {
         TextComponent copy = new TextComponent(text);
         HoverEvent hover = original.getHoverEvent();
         if (hover != null) {
@@ -255,16 +267,51 @@ public class DBTicket {
                 .replace(PH.ANSWER.name, this.answer != null ? this.answer : "")
                 .replace(PH.TICKETTYPE.name, ticketTypes.getOrDefault(this.ticketType, ""))
                 .replace(PH.CLAIMER.name, this.claimedBy != null ? this.claimedBy : "");
+        result = replaceDateTimePlaceholder(result, "create");
+        result = replaceDateTimePlaceholder(result, "claim");
+        result = replaceDateTimePlaceholder(result, "close");
+        result = replaceDateTimePlaceholder(result, "read");
         return result;
     }
 
-    public static List<Tuple<Integer, Integer>> extractUrls(String text)
-    {
+    private String replaceDateTimePlaceholder(String template, String prefix) {
+        ZonedDateTime zdt = null;
+        switch (prefix) {
+            case "claim":
+                if (this.getClaimingDate() != null)
+                    zdt = this.getClaimingDate().toInstant().atZone(ZoneId.systemDefault());
+                break;
+            case "close":
+                if (this.getAnswerDate() != null)
+                    zdt = this.getAnswerDate().toInstant().atZone(ZoneId.systemDefault());
+                break;
+            case "read":
+                if (this.getReadDate() != null)
+                    zdt = this.getReadDate().toInstant().atZone(ZoneId.systemDefault());
+                break;
+            default:
+                if (this.getRequestDate() != null)
+                    zdt = this.getRequestDate().toInstant().atZone(ZoneId.systemDefault());
+                break;
+        }
+        String result = template;
+        if (zdt != null)
+            result = result
+                    .replace("%" + prefix + "_" + PH.DATE_YYYY.name, String.format("%04d", zdt.getYear()))
+                    .replace("%" + prefix + "_" + PH.DATE_YY.name, String.format("%02d", zdt.getYear() % 100))
+                    .replace("%" + prefix + "_" + PH.DATE_MM.name, String.format("%02d", zdt.getMonthValue()))
+                    .replace("%" + prefix + "_" + PH.DATE_DD.name, String.format("%02d", zdt.getDayOfMonth()))
+                    .replace("%" + prefix + "_" + PH.DATE_hh.name, String.format("%02d", zdt.getHour()))
+                    .replace("%" + prefix + "_" + PH.DATE_mm.name, String.format("%02d", zdt.getMinute()))
+                    .replace("%" + prefix + "_" + PH.DATE_ss.name, String.format("%02d", zdt.getSecond()));
+        return result;
+    }
+
+    public static List<Tuple<Integer, Integer>> extractUrls(String text) {
         List<Tuple<Integer, Integer>> containedUrls = new ArrayList<Tuple<Integer, Integer>>();
-        Pattern pattern = Pattern.compile((String)ProxyTickets.getInstance().getCachedConfig().get(ConfigManager.TICKET_FORMAT_LINK_KEY));
+        Pattern pattern = Pattern.compile((String) ProxyTickets.getInstance().getCachedConfig().get(ConfigManager.TICKET_FORMAT_LINK_KEY));
         Matcher urlMatcher = pattern.matcher(text);
-        while (urlMatcher.find())
-        {
+        while (urlMatcher.find()) {
             containedUrls.add(new Tuple<>(urlMatcher.start(0), urlMatcher.end(0)));
         }
         return containedUrls;
