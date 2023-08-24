@@ -3,9 +3,10 @@ package com.github.Emcc13.TicketsProxy.Database;
 import com.github.Emcc13.TicketsProxy.Config.ConfigManager;
 import com.github.Emcc13.TicketsProxy.ProxyTickets;
 import com.github.Emcc13.TicketsProxy.Util.Tuple;
-import net.md_5.bungee.api.chat.*;
-import net.md_5.bungee.api.chat.hover.content.Content;
-import net.md_5.bungee.api.chat.hover.content.Text;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextReplacementConfig;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -206,51 +207,22 @@ public class DBTicket {
         return readDate;
     }
 
-    public TextComponent format(List<TextComponent> rawMessage, Map<String, String> ticketTypes) {
-        TextComponent result = new TextComponent();
-        for (TextComponent tc : rawMessage) {
-            String tcText = replacePlaceholder(tc.getText(), ticketTypes);
-            List<Tuple<Integer, Integer>> indeces = extractUrls(tcText);
-            TextComponent copy;
-            int last_index = 0;
-            for (Tuple<Integer, Integer> index : indeces) {
-                String url = tcText.substring(index.first, index.second);
-                copy = buildComponent(tc, tcText.substring(last_index, index.first), ticketTypes);
-                result.addExtra(copy);
-                copy = new TextComponent(url);
-                if (!(url.startsWith("https") || url.startsWith("http"))) {
-                    url = "https://" + url;
-                }
-                copy.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url));
-                copy.setUnderlined(true);
-                result.addExtra(copy);
-                last_index = index.second;
+    public Component format(String rawMessage, Map<String, String> ticketTypes) {
+        String componentText = replacePlaceholder(rawMessage, ticketTypes);
+        List<Tuple<Integer, Integer>> indeces = extractUrls(componentText);
+        String copy = "";
+        int last_index = 0;
+        for (Tuple<Integer, Integer> index : indeces) {
+            copy += componentText.substring(last_index, index.first);
+            String url = componentText.substring(index.first, index.second);
+            if (!(url.startsWith("https") || url.startsWith("http"))) {
+                url = "https://" + url;
             }
-            copy = buildComponent(tc, tcText.substring(last_index), ticketTypes);
-            result.addExtra(copy);
+            copy += "<click:open_url:''"+url+"''>"+url+"</click>";
+            last_index = index.second;
         }
-        return result;
-    }
-
-    private TextComponent buildComponent(TextComponent original, String text, Map<String, String> ticketTypes) {
-        TextComponent copy = new TextComponent(text);
-        HoverEvent hover = original.getHoverEvent();
-        if (hover != null) {
-            List<Content> contents = new LinkedList<>();
-            for (Content content : hover.getContents()) {
-                contents.add(new Text(replacePlaceholder(
-                        ((String) ((Text) content).getValue()),
-                        ticketTypes
-                )));
-            }
-            copy.setHoverEvent(new HoverEvent(hover.getAction(), contents));
-        }
-        ClickEvent click = original.getClickEvent();
-        if (click != null) {
-            copy.setClickEvent(new ClickEvent(click.getAction(),
-                    replacePlaceholder(click.getValue(), ticketTypes)));
-        }
-        return copy;
+        copy += componentText.substring(last_index);
+        return MiniMessage.miniMessage().deserialize(replaceDateTimePlaceholder(copy, ticketType));
     }
 
     private String replacePlaceholder(String template, Map<String, String> ticketTypes) {

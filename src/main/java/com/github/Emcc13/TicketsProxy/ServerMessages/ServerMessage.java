@@ -1,9 +1,5 @@
 package com.github.Emcc13.TicketsProxy.ServerMessages;
 
-import com.github.Emcc13.TicketsProxy.Util.CustomTextComponentSerializer;
-import com.google.gson.*;
-import net.md_5.bungee.api.chat.TextComponent;
-
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -41,139 +37,204 @@ public class ServerMessage {
 
     private Integer number;
 
-    private String ticketType;
+    private String ticketType = "";
 
-    private TextComponent textComponent;
+    private String messageString;
 
-    public ServerMessage(byte[] bytes) {
+    public ServerMessage(){
+    }
+
+    public static ServerMessage fromBytes(byte[] bytes){
         java.io.ByteArrayInputStream stream = new java.io.ByteArrayInputStream(bytes);
         DataInputStream in = new DataInputStream(stream);
+        ServerMessage result = new ServerMessage();
         try {
-            topic = MessageTopic.valueOf(in.readUTF());
-            this.player = in.readUTF();
+            result.topic = MessageTopic.valueOf(in.readUTF());
+            result.player = in.readUTF();
 
-            switch (this.topic) {
+            switch (result.topic) {
                 case ticketsPage:
-                    this.number = in.readInt();
-                    this.ticketType = in.readUTF();
+                    result.number = in.readInt();
+                    result.ticketType = in.readUTF();
                     break;
 
                 case ticketsNum:
+                case ticketList:
                 case ticketsClaim:
                 case ticketsUnclaim:
                 case ticketsTP:
-                case ticketList:
                 case ticketRead:
-                    this.number = in.readInt();
+                    result.number = in.readInt();
                     break;
 
                 case ticketsPlayerPage:
-                    this.text = in.readUTF();
-                    this.number = in.readInt();
-                    this.ticketType = in.readUTF();
+                    result.text = in.readUTF();
+                    result.number = in.readInt();
+                    result.ticketType = in.readUTF();
                     break;
 
                 case ticketsClose:
-                    this.number = in.readInt();
-                    this.text = in.readUTF();
+                    result.number = in.readInt();
+                    result.text = in.readUTF();
                     break;
 
                 case ticketNew:
-                    this.text = in.readUTF();
-                    this.server = in.readUTF();
-                    this.world = in.readUTF();
-                    this.posX = in.readDouble();
-                    this.posY = in.readDouble();
-                    this.posZ = in.readDouble();
-                    this.pitch = in.readFloat();
-                    this.yaw = in.readFloat();
-                    this.ticketType = in.readUTF();
+                    result.text = in.readUTF();
+                    result.server = in.readUTF();
+                    result.world = in.readUTF();
+                    result.posX = in.readDouble();
+                    result.posY = in.readDouble();
+                    result.posZ = in.readDouble();
+                    result.pitch = in.readFloat();
+                    result.yaw = in.readFloat();
+                    result.ticketType = in.readUTF();
                     break;
                 case tpPos:
-                    this.world = in.readUTF();
-                    this.posX = in.readDouble();
-                    this.posY = in.readDouble();
-                    this.posZ = in.readDouble();
-                    this.pitch = in.readFloat();
-                    this.yaw = in.readFloat();
+                    result.world = in.readUTF();
+                    result.posX = in.readDouble();
+                    result.posY = in.readDouble();
+                    result.posZ = in.readDouble();
+                    result.pitch = in.readFloat();
+                    result.yaw = in.readFloat();
                 case ticketNotify:
-                    JsonParser parser = new JsonParser();
-                    this.textComponent = CustomTextComponentSerializer.
-                            deserialize((JsonObject) parser.parse(in.readUTF()));
+                    result.messageString = in.readUTF();
                     break;
                 default:
                     break;
             }
         } catch (IOException e) {
-
         }
+        return result;
     }
 
-    public ServerMessage(MessageTopic mt, String player, int ticketID, String... text) {
-        this(mt, player, ticketID);
-        this.text = String.join(" ", text);
+    public static ServerMessage forTicketsNum(String playerName, int number){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketsNum;
+        result.player = playerName;
+        result.number = number;
+        return result;
     }
 
-    public ServerMessage(String player, String server, String world, Double posX, Double posY, Double posZ,
-                         Float pitch, Float yaw, String ticketType, String... text) {
-        this.topic = MessageTopic.ticketNew;
-        this.player = player;
-        this.server = server;
-        this.world = world;
-        this.posX = posX;
-        this.posY = posY;
-        this.posZ = posZ;
-        this.pitch = pitch;
-        this.yaw = yaw;
-        this.text = String.join(" ", text);
-        this.ticketType = ticketType;
+    public static ServerMessage forTicketsClaim(String playerName, int ticketID){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketsClaim;
+        result.player = playerName;
+        result.number = ticketID;
+        return result;
     }
 
-    public ServerMessage(MessageTopic mt, ServerMessage sm) {
-        this.topic = mt;
-        this.player = sm.player;
-        this.server = sm.server;
-        this.world = sm.world;
-        this.posX = sm.posX;
-        this.posY = sm.posY;
-        this.posZ = sm.posZ;
-        this.pitch = sm.pitch;
-        this.yaw = sm.yaw;
-        this.text = sm.text;
-        this.number = sm.number;
+    public static ServerMessage forTicketsUnclaim(String playerName, int ticketID){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketsUnclaim;
+        result.player = playerName;
+        result.number = ticketID;
+        return result;
     }
 
-    public ServerMessage(String player, String world, Double posX, Double posY, Double posZ,
-                         Float pitch, Float yaw) {
-        this(MessageTopic.tpPos, player);
-        this.world = world;
-        this.posX = posX;
-        this.posY = posY;
-        this.posZ = posZ;
-        this.pitch = pitch;
-        this.yaw = yaw;
+    public static ServerMessage forTicketsClose(String playerName, int ticketsID, String... closeText){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketsClose;
+        result.player = playerName;
+        result.number = ticketsID;
+        result.text = String.join(" ", closeText);
+        return result;
     }
 
-    public ServerMessage(MessageTopic mt, String player, int ticketID) {
-        this(mt, player);
-        this.number = ticketID;
+    public static ServerMessage forTicketsTP(String playerName,int ticketID){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketsTP;
+        result.player = playerName;
+        result.number = ticketID;
+        return result;
     }
 
-    public ServerMessage(MessageTopic mt, String player) {
-        this.topic = mt;
-        this.player = player;
+    public static ServerMessage forTicketsPage(String playerName, String ticketType, int pageIdx){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketsPage;
+        result.player = playerName;
+        result.ticketType = ticketType;
+        result.number = pageIdx;
+        return result;
     }
 
-    public ServerMessage(MessageTopic mt, TextComponent textComponent) {
-        this.topic = mt;
-        this.player = " ";
-        this.textComponent = textComponent;
+    public static ServerMessage forTicketsPlayerPage(String playerName, int ticketID, String ticketType, String... text){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketsPlayerPage;
+        result.number = ticketID;
+        result.player = playerName;
+        result.ticketType = ticketType;
+        result.text = String.join(" ", text);
+        return result;
     }
 
-    public ServerMessage(MessageTopic mt, String player, TextComponent textComponent) {
-        this.topic = mt;
-        this.player = player;
-        this.textComponent = textComponent;
+    public static ServerMessage forTicketList(String playerName, int ticketID){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketList;
+        result.player = playerName;
+        result.number = ticketID;
+        return result;
+    }
+
+    public static ServerMessage forTicketNew(String player, String server, String world, Double posX, Double posY, Double posZ,
+                                             Float pitch, Float yaw, String ticketType, String... text) {
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketNew;
+        result.player = player;
+        result.server = server;
+        result.world = world;
+        result.posX = posX;
+        result.posY = posY;
+        result.posZ = posZ;
+        result.pitch = pitch;
+        result.yaw = yaw;
+        result.text = String.join(" ", text);
+        result.ticketType = ticketType;
+        return result;
+    }
+
+    public static ServerMessage forTicketRead(String playerName, int ticketID){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketRead;
+        result.player = playerName;
+        result.number = ticketID;
+        return result;
+    }
+
+    public static ServerMessage forTpPos(String playerName, String world,
+                                         Double posX, Double posY, Double posZ,
+                                         Float pitch, Float yaw){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.tpPos;
+        result.player = playerName;
+        result.world = world;
+        result.posX = posX;
+        result.posY = posY;
+        result.posZ = posZ;
+        result.pitch = pitch;
+        result.yaw = yaw;
+        return result;
+    }
+
+    public static ServerMessage forTicketsOpen(String playerName){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketsOpen;
+        result.player = playerName;
+        return result;
+    }
+
+    public static ServerMessage forTicketsUnread(String playerName){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketsUnread;
+        result.player = playerName;
+        return result;
+    }
+
+    public static ServerMessage forTicketNotify(String message){
+        ServerMessage result = new ServerMessage();
+        result.topic = MessageTopic.ticketNotify;
+        result.player = " ";
+        result.messageString = message;
+        return result;
     }
 
     public byte[] toMessagae() {
@@ -229,8 +290,7 @@ public class ServerMessage {
                     out.writeFloat(this.yaw);
                     break;
                 case ticketNotify:
-                    Gson gson = new Gson();
-                    out.writeUTF(gson.toJson(CustomTextComponentSerializer.serialize(this.textComponent)));
+                    out.writeUTF(this.messageString);
                     break;
                 default:
                     break;
@@ -291,7 +351,8 @@ public class ServerMessage {
         return ticketType;
     }
 
-    public TextComponent getTextComponent() {
-        return textComponent;
+    public String getMessage() {
+        return messageString;
     }
 }
+

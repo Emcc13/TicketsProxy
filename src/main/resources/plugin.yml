@@ -1,5 +1,10 @@
 name: TicketsProxy
 author: Emcc13
-version: 0.6.4
+version: 0.7
 
 main: com.github.Emcc13.TicketsProxy.ProxyTickets
+
+permissions:
+  tickets.cleandb:
+    description: allows to delete old tickets
+    default: false

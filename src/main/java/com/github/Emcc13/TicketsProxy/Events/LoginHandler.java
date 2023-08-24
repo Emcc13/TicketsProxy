@@ -1,18 +1,21 @@
 package com.github.Emcc13.TicketsProxy.Events;
 
-//import net.md_5.bungee.api.connection.ProxiedPlayer;
-//import net.md_5.bungee.api.event.PostLoginEvent;
-//import net.md_5.bungee.api.plugin.Listener;
-//import net.md_5.bungee.event.EventHandler;
-//
-//public class LoginHandler implements Listener{
-//    public LoginHandler(){
-//    }
-//
-//    @EventHandler
-//    public void onPostLogin(PostLoginEvent ev){
-//        ProxiedPlayer p = ev.getPlayer();
-//        // TODO: login message
-//
-//    }
-//}
+
+import com.velocitypowered.api.event.Subscribe;
+import com.velocitypowered.api.event.connection.DisconnectEvent;
+import com.velocitypowered.api.event.connection.PostLoginEvent;
+
+public class LoginHandler{
+    public LoginHandler(){
+    }
+
+    @Subscribe
+    public void onPostLogin(PostLoginEvent event){
+
+    }
+
+    @Subscribe
+    public void onDisconnect(DisconnectEvent event){
+
+    }
+}

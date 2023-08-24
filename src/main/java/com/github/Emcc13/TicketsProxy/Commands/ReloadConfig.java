@@ -1,29 +1,35 @@
 package com.github.Emcc13.TicketsProxy.Commands;
 
-import com.github.Emcc13.TicketsProxy.Config.ConfigManager;
 import com.github.Emcc13.TicketsProxy.ProxyTickets;
-import net.md_5.bungee.api.CommandSender;
-import net.md_5.bungee.api.connection.ProxiedPlayer;
-import net.md_5.bungee.api.plugin.Command;
+import com.velocitypowered.api.command.SimpleCommand;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
-public class ReloadConfig extends Command {
+public class ReloadConfig implements SimpleCommand {
     public ReloadConfig(){
-        super("ticketsreload");
+        super();
     }
 
     @Override
-    public void execute(CommandSender commandSender, String[] strings){
-        if (commandSender instanceof ProxiedPlayer){
-            ProxiedPlayer p = (ProxiedPlayer) commandSender;
-            List<String> reload_ops = (List<String>)ProxyTickets.getInstance().getCachedConfig().
-                    get(ConfigManager.CONFIG_RELOAD_OP_KEY);
-            if (reload_ops.contains(p.getUniqueId().toString())){
-                ProxyTickets.getInstance().reloadConfig();
-            }
-        }else {
-            ProxyTickets.getInstance().reloadConfig();
-        }
+    public boolean hasPermission(Invocation invocation) {
+        return true || invocation.source().hasPermission("tickets.reload");
     }
+
+    @Override
+    public void execute(Invocation invocation) {
+        ProxyTickets.getInstance().reloadConfig();
+    }
+
+    @Override
+    public List<String> suggest(Invocation invocation) {
+        return List.of();
+    }
+
+    @Override
+    public CompletableFuture<List<String>> suggestAsync(Invocation invocation) {
+        return CompletableFuture.completedFuture(List.of());
+    }
+
+
 }

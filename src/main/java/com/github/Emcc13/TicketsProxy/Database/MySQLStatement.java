@@ -169,7 +169,7 @@ public class MySQLStatement {
         return result;
     }
 
-    public void execute(DBInterface database) {
+    public boolean execute(DBInterface database) {
         try {
             switch (type) {
                 case addTicket:
@@ -189,9 +189,30 @@ public class MySQLStatement {
                     database.closeTicket(id, player, text, timeStamp);
                     break;
                 default:
-                    return;
+                    return true;
             }
         } catch (NotConnectedException e) {
+            return false;
+        }
+        return true;
+    }
+
+    public String toString(){
+        switch (type){
+            case addTicket:
+                return "Add Ticket for: "+player+" with text: "+text+"; Location: "+
+                        world+" "+locX+", "+locY+", "+locZ+"; "+locAzimuth+", "+locElevation+
+                        "; "+timeStamp+"; check spam: "+catchSpam;
+            case claimTicket:
+                return "Claim Ticket: "+id+", "+player+"; "+timeStamp;
+            case unclaimTicket:
+                return "Unclaim Ticket: "+id+", "+player;
+            case readTicket:
+                return "Read Ticket: "+id+", "+player+"; "+timeStamp;
+            case closeTicket:
+                return "Close ticket: "+id+", "+player+" with Text: "+text+"; "+timeStamp;
+            default:
+                return "Invalid type";
         }
     }
 }

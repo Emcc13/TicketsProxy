@@ -7,8 +7,7 @@ public interface DBInterface extends Runnable{
     void updateSettings(String host, String port, String database, String table,
                         String username, String password);
     boolean isConnected();
-    boolean disconnect();
-    boolean updateDB();
+//    boolean disconnect();
 
     void addTicket(String player, String ticketType, String text, String server, String world,
                           Double locX, Double locY, Double locZ, Float locAzimuth, Float locElevation,

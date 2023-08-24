@@ -8,93 +8,127 @@ import com.github.Emcc13.TicketsProxy.Database.MySQL;
 import com.github.Emcc13.TicketsProxy.ServerMessages.MessageReceiver;
 import com.github.Emcc13.TicketsProxy.ServerMessages.ServerMessage;
 import com.github.Emcc13.TicketsProxy.ServerMessages.TicketChangeNotifier;
-import net.md_5.bungee.api.ProxyServer;
-import net.md_5.bungee.api.chat.TextComponent;
-import net.md_5.bungee.api.config.ServerInfo;
-import net.md_5.bungee.api.plugin.Plugin;
-import net.md_5.bungee.api.scheduler.ScheduledTask;
-import net.md_5.bungee.config.Configuration;
+import com.google.inject.Inject;
+import com.velocitypowered.api.command.CommandManager;
+import com.velocitypowered.api.command.CommandMeta;
+import com.velocitypowered.api.event.Subscribe;
+import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
+import com.velocitypowered.api.plugin.Plugin;
+import com.velocitypowered.api.plugin.annotation.DataDirectory;
+import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
+import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+import com.velocitypowered.api.proxy.server.RegisteredServer;
+import com.velocitypowered.api.scheduler.ScheduledTask;
+import org.slf4j.Logger;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-public class ProxyTickets extends Plugin{
+
+@Plugin(id = "tickets", name = "TicketsProxy",
+        description = "A ticket plugin", version = "0.7", authors = "Emcc13")
+public class ProxyTickets {
     private DBInterface dbInterface;
     private Map<String, Object> cachedConfig;
     private static ProxyTickets instance;
     private ScheduledTask dbTask;
     private TicketChangeNotifier ticketChangeNotifier;
     public static Pattern urlPattern;
+    private MinecraftChannelIdentifier channelIdentifier;
 
-    @Override
-    public void onEnable(){
+    private final ProxyServer server;
+    private final Logger logger;
+    private final Path dataDirectory;
+
+    @Inject
+    public ProxyTickets(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory){
+        this.server = server;
+        this.logger = logger;
+        this.dataDirectory = dataDirectory;
+    }
+
+    @Subscribe
+    public void onProxyInitialization(ProxyInitializeEvent event) {
         ProxyTickets.instance = this;
-        getLogger().info("TicketsProxy");
+        this.logger.info("TicketsProxy");
 
-        getProxy().getPluginManager().registerListener(this, new MessageReceiver(this));
+//        https://docs.papermc.io/velocity/dev/command-api
+//        https://github.com/Mojang/brigadier
+//        https://gist.github.com/Xernium/95c9262c5f70b8791557861bbc09be1b
+
+        File queries = new File(this.dataDirectory.toAbsolutePath().toFile(), "queries");
+        if (!queries.exists()) {
+            queries.mkdirs();
+        }
+
+        server.getEventManager().register(this, new MessageReceiver(this));
 
         this.cachedConfig = ConfigManager.getConfig(this);
-        getProxy().registerChannel((String)this.cachedConfig.get(ConfigManager.CHANNEL_KEY));
-        File querries = new File(this.getDataFolder().getAbsolutePath(),"querries");
-        if (!querries.exists()){
-            querries.mkdir();
-        }
+        this.channelIdentifier = MinecraftChannelIdentifier.create(
+                "tickets",
+                (String) this.cachedConfig.get(ConfigManager.CHANNEL_KEY)
+        );
+        this.getServer().getChannelRegistrar().register(this.channelIdentifier);
 
         this.dbInterface = new MySQL(this,
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_HOST_KEY),
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_PORT_KEY),
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_DATABASE_KEY),
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_TABLE_KEY),
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_USERNAME_KEY),
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_PASSWORD_KEY),
-                querries.toPath());
-        if (!(boolean) this.cachedConfig.get(ConfigManager.DB_UPDATED_KEY)){
-            if (this.dbInterface.updateDB()) {
-                this.dbInterface.disconnect();
-                Configuration config = ConfigManager.loadFromFile(this);
-                config.set(ConfigManager.DB_UPDATED_KEY, true);
-                ConfigManager.saveToFile(this, config);
-                this.cachedConfig.put(ConfigManager.DB_UPDATED_KEY, true);
-            }
-        }
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_HOST_KEY),
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_PORT_KEY),
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_DATABASE_KEY),
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_TABLE_KEY),
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_USERNAME_KEY),
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_PASSWORD_KEY),
+                queries.toPath());
 
-        getProxy().getPluginManager().registerCommand(this, new ReloadConfig());
-        getProxy().getPluginManager().registerCommand(this, new CleanDB());
-        urlPattern = Pattern.compile((String)this.cachedConfig.get(ConfigManager.TICKET_FORMAT_LINK_KEY),
+        CommandManager commandManager = this.server.getCommandManager();
+
+        CommandMeta cleanDB = commandManager.metaBuilder("tickets.cleandb").plugin(this).build();
+        commandManager.register(cleanDB, new CleanDB());
+
+        CommandMeta reload = commandManager.metaBuilder("tickets.reload").plugin(this).build();
+        commandManager.register(reload, new ReloadConfig());
+
+        urlPattern = Pattern.compile((String) this.cachedConfig.get(ConfigManager.TICKET_FORMAT_LINK_KEY),
                 Pattern.CASE_INSENSITIVE | Pattern.MULTILINE | Pattern.DOTALL);
 
         this.ticketChangeNotifier = new TicketChangeNotifier(this);
-        this.dbTask = ProxyServer.getInstance().getScheduler().runAsync(this, this.dbInterface);
+
+        this.dbTask = this.getServer().getScheduler().buildTask(this, this.dbInterface).schedule();
     }
 
-    @Override
-    public void onDisable(){
+    @Subscribe
+    public void onDisable(ProxyShutdownEvent event) {
         this.dbTask.cancel();
     }
 
-    public void reloadConfig(){
-        this.getProxy().unregisterChannel((String)this.cachedConfig.get(ConfigManager.CHANNEL_KEY));
+    public void reloadConfig() {
+        this.getServer().getChannelRegistrar().unregister(this.channelIdentifier);
         this.cachedConfig = ConfigManager.getConfig(this);
-        getProxy().registerChannel((String)this.cachedConfig.get(ConfigManager.CHANNEL_KEY));
+        this.channelIdentifier = MinecraftChannelIdentifier.create(
+                "tickets",
+                (String) this.cachedConfig.get(ConfigManager.CHANNEL_KEY)
+        );
+        this.getServer().getChannelRegistrar().register(this.channelIdentifier);
         this.dbInterface.updateSettings(
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_HOST_KEY),
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_PORT_KEY),
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_DATABASE_KEY),
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_TABLE_KEY),
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_USERNAME_KEY),
-                (String)this.cachedConfig.get(ConfigManager.DATABASE_PASSWORD_KEY));
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_HOST_KEY),
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_PORT_KEY),
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_DATABASE_KEY),
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_TABLE_KEY),
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_USERNAME_KEY),
+                (String) this.cachedConfig.get(ConfigManager.DATABASE_PASSWORD_KEY));
     }
 
-    public void sendNotification(TextComponent text){
-        byte[] message = new ServerMessage(ServerMessage.MessageTopic.ticketNotify, text).toMessagae();
-        String channel = (String)cachedConfig.get(ConfigManager.CHANNEL_KEY);
-        for (ServerInfo server : getProxy().getServers().values()){
-            server.sendData(channel, message);
+    public void sendNotification(String text) {
+        byte[] message = ServerMessage.forTicketNotify(text).toMessagae();
+        for (RegisteredServer server : getServer().getAllServers()){
+            server.sendPluginMessage(this.channelIdentifier, message);
         }
     }
 
-    public static ProxyTickets getInstance(){
+    public static ProxyTickets getInstance() {
         return instance;
     }
 
@@ -106,7 +140,23 @@ public class ProxyTickets extends Plugin{
         return cachedConfig;
     }
 
-    public TicketChangeNotifier getNotifier(){
+    public TicketChangeNotifier getNotifier() {
         return ticketChangeNotifier;
+    }
+
+    public ProxyServer getServer() {
+        return server;
+    }
+
+    public Path getDirectory(){
+        return dataDirectory;
+    }
+
+    public ChannelIdentifier getChannelIdentifier(){
+        return channelIdentifier;
+    }
+
+    public Logger getLogger(){
+        return this.logger;
     }
 }

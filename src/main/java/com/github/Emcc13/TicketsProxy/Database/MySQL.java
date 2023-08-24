@@ -2,6 +2,7 @@ package com.github.Emcc13.TicketsProxy.Database;
 
 import com.github.Emcc13.TicketsProxy.Config.ConfigManager;
 import com.github.Emcc13.TicketsProxy.ProxyTickets;
+//import com.mysql.cj.jdbc.Driver;
 
 import java.io.*;
 import java.nio.file.*;
@@ -51,7 +52,6 @@ public class MySQL implements DBInterface {
 
     private final String IDC = "id";
     private final String enquirerC = "enquirer";
-    //    private final String ticketTypeC = "living";
     private final String ticketTypeC = "ticketType";
     private final String requestC = "request";
     private final String requestDateC = "requestDate";
@@ -99,35 +99,6 @@ public class MySQL implements DBInterface {
         return true;
     }
 
-    public boolean updateDB() {
-        Statement statement;
-        try {
-            statement = this.con.createStatement();
-            statement.execute("ALTER TABLE " +
-                    this.table + " CHANGE living " +
-                    this.ticketTypeC + " CHAR(1) NOT NULL;");
-            System.out.println("[TicketsProxy] Updated Column Type.");
-            statement.execute("UPDATE " +
-                    this.table + " SET " +
-                    this.ticketTypeC + "=\"p\" WHERE " +
-                    this.ticketTypeC + "=\"1\";");
-            System.out.println("[TicketsProxy] Updated Living Value.");
-            statement.execute("UPDATE " +
-                    this.table + " SET " +
-                    this.ticketTypeC + "=\"c\" WHERE " +
-                    this.ticketTypeC + "=\"0\";");
-            System.out.println("[TicketsProxy] Updated Console Value.");
-            statement.execute("UPDATE " +
-                    this.table + " SET " +
-                    this.ticketTypeC + "=\"h\" WHERE " +
-                    this.ticketTypeC + "=\"2\";");
-            System.out.println("[TicketsProxy] Updated Hidden Value.");
-        } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
-        }
-        return true;
-    }
 
     @Override
     public void run() {
@@ -145,8 +116,6 @@ public class MySQL implements DBInterface {
 
         // obtain the file system of the Path
         FileSystem fs = path.getFileSystem();
-        Lock lock = new ReentrantLock();
-        Condition condition = lock.newCondition();
 
         // create the new WatchService using the new try() block
         try (WatchService service = fs.newWatchService()) {
@@ -155,64 +124,65 @@ public class MySQL implements DBInterface {
             path.register(service, ENTRY_CREATE);
             path.register(service, ENTRY_MODIFY);
 //            path.register(service, ENTRY_DELETE);
-
             // Start the infinite polling loop
             WatchKey key = null;
+            boolean new_files = true;
             while (true) {
-                key = service.take();
-
-                // Dequeueing events
-                Boolean new_files = false;
-                WatchEvent.Kind<?> kind = null;
-                for (WatchEvent<?> watchEvent : key.pollEvents()) {
-
-                    // Get the type of the event
-                    kind = watchEvent.kind();
-//                    Path newPath;
-                    if (OVERFLOW == kind) {
-                        continue;
-                    } else if (ENTRY_CREATE == kind) {
-//                         A new Path was created
-                        new_files = true;
-                    } else if (ENTRY_MODIFY == kind) {
-//                         modified
-                        new_files = true;
-                    } else {
-                        continue;
+                if (!new_files) {
+                    key = service.take();
+                    // Dequeueing events
+                    WatchEvent.Kind<?> kind = null;
+                    for (WatchEvent<?> watchEvent : key.pollEvents()) {
+                        // Get the type of the event
+                        kind = watchEvent.kind();
+                        //                    Path newPath;
+                        if (OVERFLOW == kind) {
+                            continue;
+                        } else if (ENTRY_CREATE == kind) {
+                            //                         A new Path was created
+                            new_files = true;
+                        } else if (ENTRY_MODIFY == kind) {
+                            //                         modified
+                            new_files = true;
+                        } else {
+                            continue;
+                        }
                     }
                 }
                 if (new_files) {
                     if (!this.isConnected()) {
-                        if (this.connect())
-                            this.setupTables();
-                        try {
-                            lock.lock();
-                            if (!this.isConnected()) {
-                                condition.await(15, TimeUnit.SECONDS);
-                                continue;
-                            } else {
-                                condition.await(5, TimeUnit.SECONDS);
-                            }
-                        } finally {
-                            lock.unlock();
+                        if (!this.connect()) {
+                            Thread.sleep(15 * 1000);
+                            continue;
                         }
                     }
-                    File[] querries = path.toFile().listFiles();
-                    for (File f : querries) {
-                        MySQLStatement statement = new MySQLStatement(Files.readAllBytes(
-                                Paths.get(f.toString())));
-                        f.delete();
-                        statement.execute(this);
-                    }
+                    new_files = !insertCachedTickets();
                 }
-                if (!key.reset()) {
+                if (key != null && !key.reset()) {
                     break;
                 }
             }
-
-        } catch (IOException ioe) {
-        } catch (InterruptedException ie) {
+        } catch (IOException | InterruptedException ioe) {
         }
+    }
+
+    private boolean insertCachedTickets(){
+        File[] queries = path.toFile().listFiles();
+        boolean all_deleted = true;
+        for (File f : queries) {
+            MySQLStatement statement = null;
+            try {
+                statement = new MySQLStatement(Files.readAllBytes(
+                        Paths.get(f.toString())));
+            } catch (IOException e) {
+            }
+            if (statement.execute(this)) {
+                f.delete();
+            }else{
+                all_deleted = false;
+            }
+        }
+        return all_deleted;
     }
 
     public void updateSettings(String host, String port, String database, String table,
@@ -436,8 +406,6 @@ public class MySQL implements DBInterface {
             );
             return true;
         } catch (SQLException | NullPointerException e) {
-            System.err.println("[ProxyTicket] [ERROR] Failed to create table!");
-            System.err.println(e);
             return false;
         }
     }
@@ -456,8 +424,8 @@ public class MySQL implements DBInterface {
         try {
             Files.write(new File(this.path.toFile(), String.valueOf(timeStamp) + ".txt").toPath(), serialized);
         } catch (IOException e) {
-            System.out.println("Failed to save sql statement!");
-            e.printStackTrace();
+            this.main.getLogger().error("Failed to save sql statement!");
+//            e.printStackTrace();
         }
     }
 
@@ -510,6 +478,7 @@ public class MySQL implements DBInterface {
                 this.main.getNotifier().createInfo(player, -1, text, false);
             }
         } catch (SQLException | NullPointerException e) {
+//            e.printStackTrace();
             this.saveStatement(timeStamp, MySQLStatement.addTicketStatement(player, ticketType, text, server, world,
                     locX, locY, locZ, locAzimuth, locElevation, timeStamp, catchSpam).serialize());
             this.con = null;
@@ -584,7 +553,7 @@ public class MySQL implements DBInterface {
                 result.add(this.dbticketFromResultSet(rs));
             }
         } catch (SQLException | NullPointerException e) {
-            e.printStackTrace();
+//            e.printStackTrace();
             this.con = null;
             this.connect();
             throw new NotConnectedException();
@@ -745,7 +714,7 @@ public class MySQL implements DBInterface {
                 return rs.getInt(1);
             }
         } catch (SQLException | NullPointerException e) {
-            e.printStackTrace();
+//            e.printStackTrace();
             this.con = null;
             this.connect();
             throw new NotConnectedException();
@@ -840,7 +809,7 @@ public class MySQL implements DBInterface {
                 return rs.getInt(1);
             }
         } catch (SQLException | NullPointerException e) {
-            e.printStackTrace();
+//            e.printStackTrace();
             this.con = null;
             this.connect();
             throw new NotConnectedException();
